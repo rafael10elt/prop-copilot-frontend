@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldAlert, TrendingUp, Cpu, Sliders, MessageSquare, PlayCircle, XCircle } from 'lucide-react';
+import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Edit3 } from 'lucide-react';
 
 const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
@@ -8,11 +8,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 export default function App() {
   const [config, setConfig] = useState({
-    prop_name: 'FTMO',
+    prop_name: 'Prop Trader',
     account_size: 100000,
     daily_loss_limit: 5000,
     profit_target: 10000,
     active_symbol: 'XAUUSD',
+    timeframe_mode: 'manual', // 'manual' ou 'ai_dynamic'
     timeframe: 'M5',
     risk_per_trade_pct: 0.25,
     auto_trade: true,
@@ -22,10 +23,9 @@ export default function App() {
     enable_be: false
   });
 
-  const [telemetry, setTelemetry] = useState({ equity: 100000, balance: 100000, daily_pnl: 0, current_spread: 1.2, ai_status: 'Carregando...' });
+  const [telemetry, setTelemetry] = useState({ equity: 100000, balance: 100000, daily_pnl: 0, current_spread: 0, ai_status: 'Carregando...' });
   const [position, setPosition] = useState({ has_position: false });
   const [metrics, setMetrics] = useState({ total_trades: 0, wins: 0, losses: 0, be_count: 0, win_rate: 0, net_profit_r: 0, net_profit_usd: 0 });
-  const [activeTab, setActiveTab] = useState('form');
 
   useEffect(() => {
     supabase.from('prop_config').select('*').eq('id', 1).single().then(r => r.data && setConfig(r.data));
@@ -33,7 +33,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates')
+    const channel = supabase.channel('desk_updates_v2')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -65,9 +65,11 @@ export default function App() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-white tracking-wide">{config.prop_name} Copilot</h1>
+              <h1 className="text-lg font-bold text-white tracking-wide">
+                {config.prop_name || 'Prop'} Copilot
+              </h1>
               <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
-                {config.active_symbol} • {config.timeframe}
+                {config.active_symbol} • {config.timeframe_mode === 'ai_dynamic' ? 'IA Dinâmica' : config.timeframe}
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
@@ -83,7 +85,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* Grid Superior: Métricas do Pregão (Inspirado no seu Print) */}
+      {/* Grid Superior: Métricas do Pregão */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
         
         {/* CARD INSPIRADO NO SEU PRINT */}
@@ -109,7 +111,6 @@ export default function App() {
             <span>BE: {metrics.be_count}</span>
           </div>
 
-          {/* DESTAQUE DE LUCRO LÍQUIDO */}
           <div className={`text-xl md:text-2xl font-black ${isProfit ? 'text-[#00ff66]' : 'text-rose-500'}`}>
             LUCRO LÍQUIDO: {isProfit ? '+' : ''}{metrics.net_profit_r} R ({isProfit ? '+$' : '-$'}{Math.abs(metrics.net_profit_usd || 0).toFixed(2)})
           </div>
@@ -121,18 +122,18 @@ export default function App() {
             <span className="text-xs text-slate-400 block mb-1">Diagnóstico da IA</span>
             <p className="text-sm font-semibold text-blue-400">{telemetry.ai_status}</p>
           </div>
-          <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
-            <span className="text-slate-400">Spread:</span>
-            <span className="font-mono text-slate-200">{telemetry.current_spread} pips</span>
+          <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs font-mono">
+            <span className="text-slate-400">Spread Atual:</span>
+            <span className="text-slate-200">{telemetry.current_spread} pips</span>
           </div>
         </div>
 
       </div>
 
-      {/* Grid Inferior: Operação Aberta & Painel de Controle */}
+      {/* Grid Inferior: Operação Aberta & Configurações */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
-        {/* OPERAÇÃO ABERTA EM TEMPO REAL */}
+        {/* OPERAÇÃO ABERTA (ÚNICA) */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-3">
@@ -163,7 +164,7 @@ export default function App() {
                   <span className="text-white font-bold">{position.current_price}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Stop Loss / TP:</span>
+                  <span className="text-slate-400">SL / TP:</span>
                   <span className="text-slate-300">{position.sl} / {position.tp}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-800 text-sm">
@@ -175,7 +176,7 @@ export default function App() {
               </div>
             ) : (
               <div className="py-12 text-center text-slate-500 text-xs">
-                Nenhuma operação aberta no momento.<br />Aguardando gatilho do robô.
+                Nenhuma operação aberta no momento.<br />Aguardando gatilho institucional.
               </div>
             )}
           </div>
@@ -189,14 +190,64 @@ export default function App() {
           )}
         </div>
 
-        {/* CONFIGURAÇÃO RÁPIDA: ALVO, RISCO E BREAK-EVEN */}
+        {/* PARÂMETROS DA ESTRATÉGIA DESENGESSADOS */}
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 text-xs">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Sliders size={16} className="text-blue-400" /> Parâmetros da Estratégia
+            <Sliders size={16} className="text-blue-400" /> Parâmetros Operacionais
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* MODO DE ALVO (IA vs MANUAL) */}
+            
+            {/* NOME DA MESA (LIVRE) */}
+            <div>
+              <label className="text-slate-400 block mb-1">Mesa / Conta</label>
+              <input
+                type="text"
+                value={config.prop_name || ''}
+                onChange={e => updateConfig({ prop_name: e.target.value })}
+                placeholder="Ex: FTMO, FundedNext, Apex..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white focus:border-blue-500 font-bold"
+              />
+            </div>
+
+            {/* ATIVO (XAUUSD, OIL, NASDAQ, US30) */}
+            <div>
+              <label className="text-slate-400 block mb-1">Ativo de Foco</label>
+              <select
+                value={config.active_symbol}
+                onChange={e => updateConfig({ active_symbol: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white font-semibold">
+                <option value="XAUUSD">XAUUSD (Ouro)</option>
+                <option value="USOIL">USOIL / WTI (Petróleo)</option>
+                <option value="NAS100">NAS100 (Nasdaq)</option>
+                <option value="US30">US30 (Dow Jones)</option>
+              </select>
+            </div>
+
+            {/* TIMEFRAME (MANUAL vs IA DINÂMICA) */}
+            <div>
+              <label className="text-slate-400 block mb-1">Timeframe Operacional</label>
+              <select
+                value={config.timeframe_mode === 'ai_dynamic' ? 'ai' : config.timeframe}
+                onChange={e => {
+                  if (e.target.value === 'ai') {
+                    updateConfig({ timeframe_mode: 'ai_dynamic' });
+                  } else {
+                    updateConfig({ timeframe_mode: 'manual', timeframe: e.target.value });
+                  }
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white">
+                <option value="ai">🤖 IA Dinâmica (M15 Macro + M1/M5 Trigger)</option>
+                <option value="M1">Manual: M1 (Scalping Rápido)</option>
+                <option value="M5">Manual: M5 (SMC Padrão)</option>
+                <option value="M15">Manual: M15 (Estrutural)</option>
+              </select>
+            </div>
+
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-800">
+            {/* ALVO R:R */}
             <div>
               <label className="text-slate-400 block mb-1">Modo de Alvo (R:R)</label>
               <select
@@ -208,9 +259,9 @@ export default function App() {
               </select>
             </div>
 
-            {/* PROPORÇÃO R:R */}
+            {/* PROPORÇÃO */}
             <div>
-              <label className="text-slate-400 block mb-1">Relação Risco:Retorno</label>
+              <label className="text-slate-400 block mb-1">Relação R:R</label>
               <select
                 disabled={config.rr_mode === 'ai'}
                 value={config.target_rr}
@@ -223,9 +274,9 @@ export default function App() {
               </select>
             </div>
 
-            {/* BREAK-EVEN TOGGLE */}
+            {/* BREAK-EVEN */}
             <div>
-              <label className="text-slate-400 block mb-1">Auto Break-Even (Zero a Zero)</label>
+              <label className="text-slate-400 block mb-1">Auto Break-Even</label>
               <button
                 onClick={() => updateConfig({ enable_be: !config.enable_be })}
                 className={`w-full py-2.5 rounded-lg font-bold transition-all ${
@@ -236,27 +287,17 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-800">
-            <div>
-              <label className="text-slate-400 block mb-1">Ativo</label>
-              <select
-                value={config.active_symbol}
-                onChange={e => updateConfig({ active_symbol: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
-                <option value="XAUUSD">XAUUSD (Ouro)</option>
-                <option value="US30">US30 (Dow Jones)</option>
-                <option value="EURUSD">EURUSD</option>
-              </select>
+          <div className="pt-2 border-t border-slate-800">
+            <div className="flex justify-between mb-1">
+              <span className="text-slate-400">Risco por Trade:</span>
+              <span className="font-bold text-blue-400 font-mono">{config.risk_per_trade_pct}%</span>
             </div>
-            <div>
-              <label className="text-slate-400 block mb-1">Risco por Trade: {config.risk_per_trade_pct}%</label>
-              <input
-                type="range" min="0.1" max="1.0" step="0.05"
-                value={config.risk_per_trade_pct || 0.25}
-                onChange={e => updateConfig({ risk_per_trade_pct: parseFloat(e.target.value) })}
-                className="w-full mt-2 accent-blue-500"
-              />
-            </div>
+            <input
+              type="range" min="0.1" max="1.0" step="0.05"
+              value={config.risk_per_trade_pct || 0.25}
+              onChange={e => updateConfig({ risk_per_trade_pct: parseFloat(e.target.value) })}
+              className="w-full accent-blue-500"
+            />
           </div>
 
           <div className="pt-2">
