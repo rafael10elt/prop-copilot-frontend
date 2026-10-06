@@ -145,6 +145,11 @@ INSTRUÇÕES:
 
       // Se for chave da Groq (padrão recomendado: gsk_...)
       if (key.startsWith("gsk_")) {
+        const historicoFormatado = messages.slice(-4).map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.text || m.content || ""
+        }));
+
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -155,7 +160,7 @@ INSTRUÇÕES:
             model: "llama-3.3-70b-versatile",
             messages: [
               { role: "system", content: systemPrompt },
-              ...messages.slice(-4),
+              ...historicoFormatado,
               { role: "user", content: userText }
             ],
             temperature: 0.5
