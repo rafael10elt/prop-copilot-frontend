@@ -30,7 +30,7 @@ export default function App() {
 
   // Chat Money Maker
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_key') || '');
+  const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_key') || import.meta.env.VITE_GROQ_API_KEY || '');
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e pronto para reportar. O que manda?' }
   ]);
@@ -44,7 +44,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v6')
+    const channel = supabase.channel('desk_updates_v7')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -93,7 +93,7 @@ export default function App() {
     return Math.max(5, Math.min(95, pct));
   };
 
-  // Motor Conversacional Inteligente (Groq Llama 3.3 ou Fallback Gemini)
+  // Motor com Auto-Detecção Dinâmica de Modelos na Groq
   const handleSendMessage = async () => {
     if (!inputMsg.trim() || isThinking) return;
     const userText = inputMsg;
@@ -102,7 +102,7 @@ export default function App() {
     setIsThinking(true);
 
     const systemPrompt = `
-Você é o "Money Maker", o funcionário trader institucional de elite responsável por operar e gerenciar esta conta de mesa proprietária.
+Você é o "Money Maker", o funcionário trader institucional responsável por operar e gerenciar esta conta de mesa proprietária.
 Você é direto, analítico, seguro e com foco absoluto em compliance e preservação de capital.
 
 DADOS EM TEMPO REAL DA CONTA:
@@ -129,59 +129,61 @@ ${position.has_position ? `
 ` : '- NENHUMA operação aberta no momento.'}
 
 INSTRUÇÕES:
-1. Responda em português de forma clara e profissional.
+1. Responda em português de forma clara e profissional de trader sênior.
 2. Se o usuário pedir resumo do dia, use as métricas acima (destaque lucro em R e taxa de acerto).
 3. Se perguntar sobre o trade aberto, dê o status detalhado.
 4. Se pedir alterações de risco/ativo/timeframe, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON: {"risk_per_trade_pct": 0.5, "active_symbol": "US30"}.
 `;
 
     try {
-      let reply = "";
       const key = aiApiKey.trim();
-
       if (!key) {
         throw new Error("Cole sua chave gratuita da Groq (começa com gsk_) no campo KEY acima.");
       }
 
-      // Se for chave da Groq (padrão recomendado: gsk_...)
-      if (key.startsWith("gsk_")) {
-        const historicoFormatado = messages.slice(-4).map(m => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.text || m.content || ""
-        }));
+      // Converte o histórico para o formato estrito da OpenAI/Groq (role + content)
+      const historicoFormatado = messages.slice(-4).map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.text || ""
+      }));
 
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${key}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "llama-3.1-8b-instant",
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...historicoFormatado,
-              { role: "user", content: userText }
-            ],
-            temperature: 0.5
-          })
+      // 1. Descobre dinamicamente quais modelos estão ativos na sua chave da Groq
+      let modeloEscolhido = "openai/gpt-oss-20b";
+      try {
+        const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
+          headers: { "Authorization": `Bearer ${key}` }
         });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message);
-        reply = data.choices[0].message.content;
-      } else {
-        // Fallback para Gemini (usando gemini-2.0-flash-lite para evitar sobrecarga)
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: `${systemPrompt}\n\nPERGUNTA: ${userText}` }] }]
-          })
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message);
-        reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sem resposta.";
+        const modelsData = await modelsRes.json();
+        if (modelsData.data && modelsData.data.length > 0) {
+          const ids = modelsData.data.map(m => m.id);
+          // Prioriza o modelo mais rápido ou pega o primeiro liberado
+          modeloEscolhido = ids.find(id => id.includes('gpt-oss-20b') || id.includes('qwen') || id.includes('gpt-oss') || id.includes('instant')) || ids[0];
+        }
+      } catch (errModels) {
+        console.log("Usando modelo padrão:", modeloEscolhido);
       }
+
+      // 2. Envia a mensagem com o modelo validado
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: modeloEscolhido,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...historicoFormatado,
+            { role: "user", content: userText }
+          ],
+          temperature: 0.5
+        })
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const reply = data.choices?.[0]?.message?.content || "Sem resposta.";
 
       // Processa comando JSON se a IA pediu para mudar parâmetros
       if (reply.includes('{') && reply.includes('}')) {
@@ -475,7 +477,7 @@ INSTRUÇÕES:
       </div>
 
       {/* ======================================================== */}
-      {/* 🤖 ASSISTENTE FLUTUANTE: MONEY MAKER (GROQ / LLAMA 3.3) */}
+      {/* 🤖 ASSISTENTE FLUTUANTE: MONEY MAKER                    */}
       {/* ======================================================== */}
       
       {!isChatOpen && (
@@ -500,7 +502,7 @@ INSTRUÇÕES:
                 <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                   Money Maker <span className="w-2 h-2 bg-emerald-400 rounded-full" />
                 </h4>
-                <p className="text-[10px] text-slate-400">Copiloto IA • Llama 3.3 (Groq Ultra-Fast)</p>
+                <p className="text-[10px] text-slate-400">Copiloto IA • Auto-Detect</p>
               </div>
             </div>
             <button
@@ -510,7 +512,7 @@ INSTRUÇÕES:
             </button>
           </div>
 
-          {/* Campo da Chave (Groq ou Gemini) */}
+          {/* Campo da Chave (Groq) */}
           <div className="px-3 py-1.5 bg-slate-950/70 border-b border-slate-800 flex items-center gap-2">
             <span className="text-[9px] text-slate-400 font-mono">KEY:</span>
             <input 
@@ -520,7 +522,7 @@ INSTRUÇÕES:
                 setAiApiKey(e.target.value);
                 localStorage.setItem('ai_key', e.target.value);
               }}
-              placeholder="Cole sua chave Groq (gsk_...) ou Gemini..."
+              placeholder="Cole sua chave Groq (gsk_...)"
               className="w-full bg-transparent text-[10px] text-slate-300 font-mono focus:outline-none"
             />
           </div>
