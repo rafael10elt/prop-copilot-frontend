@@ -93,16 +93,15 @@ export default function App() {
     return Math.max(5, Math.min(95, pct));
   };
 
-  // Cálculos visuais dos limites diários
-  const dailyPnL = telemetry.daily_pnl || 0;
-  const dailyLossLimit = config.daily_loss_limit || 20;
-  const profitTarget = config.profit_target || 40;
+  // Lucro/Prejuízo oficial do dia: soma histórico fechado + flutuante atual
+  const floatingPnL = position.has_position ? (position.pnl_usd || 0) : 0;
+  const realDayPnL = (metrics.net_profit_usd || 0) + floatingPnL;
 
-  // Porcentagem gasta da trava de perda (0% a 100%)
-  const lossUsedPct = dailyPnL < 0 ? Math.min(100, (Math.abs(dailyPnL) / dailyLossLimit) * 100) : 0;
-  // Porcentagem alcançada da meta de lucro (0% a 100%)
-  const targetAchievedPct = dailyPnL > 0 ? Math.min(100, (dailyPnL / profitTarget) * 100) : 0;
+  const dailyLossLimit = config.daily_loss_limit || 150;
+  const profitTarget = config.profit_target || 1000;
 
+  const lossUsedPct = realDayPnL < 0 ? Math.min(100, (Math.abs(realDayPnL) / dailyLossLimit) * 100) : 0;
+  const targetAchievedPct = realDayPnL > 0 ? Math.min(100, (realDayPnL / profitTarget) * 100) : 0;
   // Chat com Money Maker
   const handleSendMessage = async () => {
     if (!inputMsg.trim() || isThinking) return;
@@ -306,7 +305,7 @@ INSTRUÇÕES:
           </div>
           <div>
             <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
-              <span>Perda Hoje: <strong className={dailyPnL < 0 ? "text-rose-400" : "text-slate-300"}>${Math.abs(Math.min(0, dailyPnL)).toFixed(2)}</strong></span>
+              <span>Perda Hoje: <strong className={realDayPnL < 0 ? "text-rose-400" : "text-slate-300"}>${Math.abs(Math.min(0, realDayPnL)).toFixed(2)}</strong></span>
               <span>Limite: ${dailyLossLimit.toFixed(2)}</span>
             </div>
             <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
@@ -337,7 +336,7 @@ INSTRUÇÕES:
           </div>
           <div>
             <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
-              <span>Lucro Hoje: <strong className={dailyPnL > 0 ? "text-emerald-400" : "text-slate-300"}>+${Math.max(0, dailyPnL).toFixed(2)}</strong></span>
+              <span>Lucro Hoje: <strong className={realDayPnL > 0 ? "text-emerald-400" : "text-slate-300"}>+${Math.max(0, realDayPnL).toFixed(2)}</strong></span>
               <span>Meta: ${profitTarget.toFixed(2)} ({targetAchievedPct.toFixed(0)}%)</span>
             </div>
             <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
