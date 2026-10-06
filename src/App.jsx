@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight, MessageSquare, X, Send, Bot, Radar } from 'lucide-react';
+import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight, MessageSquare, X, Send, Bot, Radar, Target, AlertOctagon } from 'lucide-react';
 
 const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
@@ -10,9 +10,9 @@ export default function App() {
   const [config, setConfig] = useState({
     prop_name: 'Prop Trader',
     account_size: 100000,
-    daily_loss_limit: 5000,
-    profit_target: 10000,
-    active_symbol: 'RADAR', // Padrão no modo Radar Multi-Ativo
+    daily_loss_limit: 20, // Trava diária padrão em dólares
+    profit_target: 40,    // Meta diária padrão em dólares
+    active_symbol: 'RADAR',
     strategy_mode: 'ai_auto',
     timeframe_mode: 'manual',
     timeframe: 'M5',
@@ -32,7 +32,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_key') || import.meta.env.VITE_GROQ_API_KEY || '');
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e pronto para reportar. O que manda?' }
+    { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e protegendo o capital da mesa. O que manda?' }
   ]);
   const [inputMsg, setInputMsg] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -44,7 +44,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v8')
+    const channel = supabase.channel('desk_updates_v9')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -93,7 +93,17 @@ export default function App() {
     return Math.max(5, Math.min(95, pct));
   };
 
-  // Motor com Auto-Detecção Dinâmica de Modelos na Groq
+  // Cálculos visuais dos limites diários
+  const dailyPnL = telemetry.daily_pnl || 0;
+  const dailyLossLimit = config.daily_loss_limit || 20;
+  const profitTarget = config.profit_target || 40;
+
+  // Porcentagem gasta da trava de perda (0% a 100%)
+  const lossUsedPct = dailyPnL < 0 ? Math.min(100, (Math.abs(dailyPnL) / dailyLossLimit) * 100) : 0;
+  // Porcentagem alcançada da meta de lucro (0% a 100%)
+  const targetAchievedPct = dailyPnL > 0 ? Math.min(100, (dailyPnL / profitTarget) * 100) : 0;
+
+  // Chat com Money Maker
   const handleSendMessage = async () => {
     if (!inputMsg.trim() || isThinking) return;
     const userText = inputMsg;
@@ -102,13 +112,14 @@ export default function App() {
     setIsThinking(true);
 
     const systemPrompt = `
-Você é o "Money Maker", o funcionário trader institucional responsável por operar e gerenciar esta conta de mesa proprietária.
+Você é o "Money Maker", o funcionário trader institucional de elite responsável por operar e gerenciar esta conta de mesa proprietária.
 Você é direto, analítico, seguro e com foco absoluto em compliance e preservação de capital.
 
 DADOS EM TEMPO REAL DA CONTA:
 - Mesa: ${config.prop_name}
 - Saldo: $${telemetry.balance} | Equity: $${telemetry.equity}
-- Trava Diária: -$${config.daily_loss_limit} | PnL do Dia: $${telemetry.daily_pnl}
+- Trava de Perda Diária: -$${config.daily_loss_limit} | Meta de Lucro do Dia: +$${config.profit_target}
+- PnL do Dia: $${telemetry.daily_pnl}
 - Risco por Trade: ${config.risk_per_trade_pct}%
 - Modo de Ativo: ${config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO (Varrendo Ouro, Petróleo, Nasdaq e US30)' : config.active_symbol} (${config.timeframe})
 - Estratégia Ativa: ${getStrategyLabel(config.strategy_mode)}
@@ -130,9 +141,8 @@ ${position.has_position ? `
 
 INSTRUÇÕES:
 1. Responda em português de forma clara e profissional de trader sênior.
-2. Se o usuário pedir resumo do dia, use as métricas acima (destaque lucro em R e taxa de acerto).
-3. Se perguntar sobre o trade aberto, dê o status detalhado.
-4. Se pedir alterações de risco/ativo/timeframe, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON: {"risk_per_trade_pct": 0.5, "active_symbol": "RADAR"}.
+2. Se o usuário pedir para alterar a trava de perda diária ou a meta de ganho, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON com as propriedades: {"daily_loss_limit": 25, "profit_target": 50}.
+3. Você também pode alterar risco por trade ("risk_per_trade_pct"), ativo ("active_symbol") e timeframe ("timeframe").
 `;
 
     try {
@@ -146,7 +156,6 @@ INSTRUÇÕES:
         content: m.text || ""
       }));
 
-      // Busca os modelos ativos da sua chave na Groq
       let modeloEscolhido = "openai/gpt-oss-20b";
       try {
         const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
@@ -234,7 +243,7 @@ INSTRUÇÕES:
         </button>
       </header>
 
-      {/* Grid Superior: Métricas do Pregão */}
+      {/* Grid Superior: Métricas do Pregão & Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
         <div className="md:col-span-2 bg-[#0a0f1d] border border-slate-800 rounded-xl p-5 shadow-xl font-mono">
           <div className="flex justify-between items-center text-xs md:text-sm text-amber-400 font-bold border-b border-slate-800 pb-2 mb-3">
@@ -275,11 +284,78 @@ INSTRUÇÕES:
         </div>
       </div>
 
-      {/* Grid Inferior: Operação Aberta & Configurações */}
+      {/* NOVO BLOCO: LIMITES DIÁRIOS VISUAIS & AJUSTÁVEIS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5 font-sans">
+        
+        {/* CARD 1: TRAVA DE PERDA DIÁRIA */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5 uppercase tracking-wide">
+              <AlertOctagon size={16} /> Trava Perda Diária (Hard Stop)
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-400 font-mono">$</span>
+              <input
+                type="number"
+                step="1"
+                value={config.daily_loss_limit || ''}
+                onChange={e => updateConfig({ daily_loss_limit: parseFloat(e.target.value) || 0 })}
+                className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-right font-mono font-bold text-rose-300 focus:border-rose-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
+              <span>Perda Hoje: <strong className={dailyPnL < 0 ? "text-rose-400" : "text-slate-300"}>${Math.abs(Math.min(0, dailyPnL)).toFixed(2)}</strong></span>
+              <span>Limite: ${dailyLossLimit.toFixed(2)}</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-500 ${lossUsedPct > 70 ? 'bg-rose-600 animate-pulse' : 'bg-rose-500'}`}
+                style={{ width: `${lossUsedPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* CARD 2: META DE GANHO DO DIA */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wide">
+              <Target size={16} /> Meta de Lucro do Dia (Take Profit)
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-400 font-mono">$</span>
+              <input
+                type="number"
+                step="1"
+                value={config.profit_target || ''}
+                onChange={e => updateConfig({ profit_target: parseFloat(e.target.value) || 0 })}
+                className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-right font-mono font-bold text-emerald-300 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
+              <span>Lucro Hoje: <strong className={dailyPnL > 0 ? "text-emerald-400" : "text-slate-300"}>+${Math.max(0, dailyPnL).toFixed(2)}</strong></span>
+              <span>Meta: ${profitTarget.toFixed(2)} ({targetAchievedPct.toFixed(0)}%)</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${targetAchievedPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Grid Inferior: Operação Aberta & Parâmetros */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* OPERAÇÃO ABERTA */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between font-sans">
           <div>
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
@@ -388,7 +464,6 @@ INSTRUÇÕES:
               </select>
             </div>
 
-            {/* SELETOR DE ATIVO COM OPÇÃO AUTO / RADAR */}
             <div>
               <label className="text-slate-400 block mb-1">Ativo de Foco</label>
               <select
@@ -511,7 +586,6 @@ INSTRUÇÕES:
             </button>
           </div>
 
-          {/* Campo da Chave (Groq) */}
           <div className="px-3 py-1.5 bg-slate-950/70 border-b border-slate-800 flex items-center gap-2">
             <span className="text-[9px] text-slate-400 font-mono">KEY:</span>
             <input 
@@ -549,7 +623,7 @@ INSTRUÇÕES:
               value={inputMsg}
               onChange={e => setInputMsg(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Pergunte sobre a operação, dia, ou ordene mudanças..."
+              placeholder="Ex: Mude a trava para $15 e a meta para $30..."
               className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
             />
             <button
