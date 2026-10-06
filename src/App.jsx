@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight, MessageSquare, X, Send, Bot } from 'lucide-react';
+import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight, MessageSquare, X, Send, Bot, Radar } from 'lucide-react';
 
 const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
@@ -12,7 +12,7 @@ export default function App() {
     account_size: 100000,
     daily_loss_limit: 5000,
     profit_target: 10000,
-    active_symbol: 'XAUUSD',
+    active_symbol: 'RADAR', // Padrão no modo Radar Multi-Ativo
     strategy_mode: 'ai_auto',
     timeframe_mode: 'manual',
     timeframe: 'M5',
@@ -44,7 +44,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v7')
+    const channel = supabase.channel('desk_updates_v8')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -110,7 +110,7 @@ DADOS EM TEMPO REAL DA CONTA:
 - Saldo: $${telemetry.balance} | Equity: $${telemetry.equity}
 - Trava Diária: -$${config.daily_loss_limit} | PnL do Dia: $${telemetry.daily_pnl}
 - Risco por Trade: ${config.risk_per_trade_pct}%
-- Ativo: ${config.active_symbol} (${config.timeframe})
+- Modo de Ativo: ${config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO (Varrendo Ouro, Petróleo, Nasdaq e US30)' : config.active_symbol} (${config.timeframe})
 - Estratégia Ativa: ${getStrategyLabel(config.strategy_mode)}
 - Diagnóstico IA: ${telemetry.ai_status}
 
@@ -132,7 +132,7 @@ INSTRUÇÕES:
 1. Responda em português de forma clara e profissional de trader sênior.
 2. Se o usuário pedir resumo do dia, use as métricas acima (destaque lucro em R e taxa de acerto).
 3. Se perguntar sobre o trade aberto, dê o status detalhado.
-4. Se pedir alterações de risco/ativo/timeframe, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON: {"risk_per_trade_pct": 0.5, "active_symbol": "US30"}.
+4. Se pedir alterações de risco/ativo/timeframe, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON: {"risk_per_trade_pct": 0.5, "active_symbol": "RADAR"}.
 `;
 
     try {
@@ -141,13 +141,12 @@ INSTRUÇÕES:
         throw new Error("Cole sua chave gratuita da Groq (começa com gsk_) no campo KEY acima.");
       }
 
-      // Converte o histórico para o formato estrito da OpenAI/Groq (role + content)
       const historicoFormatado = messages.slice(-4).map(m => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.text || ""
       }));
 
-      // 1. Descobre dinamicamente quais modelos estão ativos na sua chave da Groq
+      // Busca os modelos ativos da sua chave na Groq
       let modeloEscolhido = "openai/gpt-oss-20b";
       try {
         const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
@@ -156,14 +155,12 @@ INSTRUÇÕES:
         const modelsData = await modelsRes.json();
         if (modelsData.data && modelsData.data.length > 0) {
           const ids = modelsData.data.map(m => m.id);
-          // Prioriza o modelo mais rápido ou pega o primeiro liberado
           modeloEscolhido = ids.find(id => id.includes('gpt-oss-20b') || id.includes('qwen') || id.includes('gpt-oss') || id.includes('instant')) || ids[0];
         }
       } catch (errModels) {
         console.log("Usando modelo padrão:", modeloEscolhido);
       }
 
-      // 2. Envia a mensagem com o modelo validado
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -185,7 +182,6 @@ INSTRUÇÕES:
       if (data.error) throw new Error(data.error.message);
       const reply = data.choices?.[0]?.message?.content || "Sem resposta.";
 
-      // Processa comando JSON se a IA pediu para mudar parâmetros
       if (reply.includes('{') && reply.includes('}')) {
         const jsonMatch = reply.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
@@ -217,8 +213,9 @@ INSTRUÇÕES:
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-white tracking-wide">{config.prop_name || 'Prop'} Copilot</h1>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
-                {config.active_symbol} • {config.timeframe_mode === 'ai_dynamic' ? 'IA Multi-TF' : config.timeframe}
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                {config.active_symbol === 'RADAR' ? <Radar size={11} className="animate-spin text-emerald-400" /> : null}
+                {config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO' : config.active_symbol} • {config.timeframe_mode === 'ai_dynamic' ? 'IA Multi-TF' : config.timeframe}
               </span>
               <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
                 <Zap size={10} /> {getStrategyLabel(config.strategy_mode)}
@@ -391,12 +388,14 @@ INSTRUÇÕES:
               </select>
             </div>
 
+            {/* SELETOR DE ATIVO COM OPÇÃO AUTO / RADAR */}
             <div>
               <label className="text-slate-400 block mb-1">Ativo de Foco</label>
               <select
                 value={config.active_symbol}
                 onChange={e => updateConfig({ active_symbol: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white font-semibold">
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-emerald-400 font-semibold">
+                <option value="RADAR">🤖 AUTO / RADAR (Varre Ouro, Petróleo, Nasdaq e US30)</option>
                 <option value="XAUUSD">XAUUSD (Ouro)</option>
                 <option value="USOIL">USOIL / WTI (Petróleo)</option>
                 <option value="NAS100">NAS100 (Nasdaq)</option>
