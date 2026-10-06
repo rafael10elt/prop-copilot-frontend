@@ -6,9 +6,6 @@ const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-// Chave Gemini fornecida (pode ser editada na tela se desejar)
-const DEFAULT_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-
 export default function App() {
   const [config, setConfig] = useState({
     prop_name: 'Prop Trader',
@@ -31,11 +28,11 @@ export default function App() {
   const [position, setPosition] = useState({ has_position: false });
   const [metrics, setMetrics] = useState({ total_trades: 0, wins: 0, losses: 0, be_count: 0, win_rate: 0, net_profit_r: 0, net_profit_usd: 0 });
 
-  // Estado do Chat Money Maker
+  // Chat Money Maker
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [geminiKey, setGeminiKey] = useState(DEFAULT_GEMINI_KEY);
+  const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_key') || '');
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e protegendo o capital da mesa. O que manda?' }
+    { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e pronto para reportar. O que manda?' }
   ]);
   const [inputMsg, setInputMsg] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -47,7 +44,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v5')
+    const channel = supabase.channel('desk_updates_v6')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -96,7 +93,7 @@ export default function App() {
     return Math.max(5, Math.min(95, pct));
   };
 
-  // Conversa com o Money Maker via Google Gemini API
+  // Motor Conversacional Inteligente (Groq Llama 3.3 ou Fallback Gemini)
   const handleSendMessage = async () => {
     if (!inputMsg.trim() || isThinking) return;
     const userText = inputMsg;
@@ -104,61 +101,84 @@ export default function App() {
     setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setIsThinking(true);
 
-    // Contexto Institucional ao Vivo injetado no prompt
     const systemPrompt = `
-Você é o "Money Maker", um funcionário trader institucional de elite, especialista em scalping e aprovação de contas de mesa proprietária.
-Você é direto, técnico, confiante, divertido e extremamente focado em proteção de capital.
+Você é o "Money Maker", o funcionário trader institucional de elite responsável por operar e gerenciar esta conta de mesa proprietária.
+Você é direto, analítico, seguro e com foco absoluto em compliance e preservação de capital.
 
-ESTADO DA CONTA AGORA:
+DADOS EM TEMPO REAL DA CONTA:
 - Mesa: ${config.prop_name}
 - Saldo: $${telemetry.balance} | Equity: $${telemetry.equity}
 - Trava Diária: -$${config.daily_loss_limit} | PnL do Dia: $${telemetry.daily_pnl}
 - Risco por Trade: ${config.risk_per_trade_pct}%
-- Ativo Monitorado: ${config.active_symbol} (${config.timeframe})
+- Ativo: ${config.active_symbol} (${config.timeframe})
 - Estratégia Ativa: ${getStrategyLabel(config.strategy_mode)}
-- Diagnóstico do Mercado: ${telemetry.ai_status}
+- Diagnóstico IA: ${telemetry.ai_status}
 
 MÉTRICAS DO PREGÃO HOJE:
-- Total Trades: ${metrics.total_trades} | Acerto: ${metrics.win_rate}%
+- Trades: ${metrics.total_trades} | Acerto: ${metrics.win_rate}%
 - Wins: ${metrics.wins} | Losses: ${metrics.losses} | BE: ${metrics.be_count}
 - Lucro Líquido: ${metrics.net_profit_r} R ($${metrics.net_profit_usd})
 
-OPERAÇÃO ABERTA NO MOMENTO:
+OPERAÇÃO ABERTA:
 ${position.has_position ? `
 - ATIVA: ${position.type} no ${position.symbol} (${position.lots} lotes)
-- Ponto de Entrada: ${position.open_price} | Preço Atual: ${position.current_price}
-- Stop Loss: ${position.sl} | Take Profit: ${position.tp}
+- Entrada: ${position.open_price} | Atual: ${position.current_price}
+- SL: ${position.sl} | TP: ${position.tp}
 - PnL Flutuante: $${position.pnl_usd} (${position.pnl_r} R)
-- Motivo da Entrada: ${telemetry.ai_status}
-` : '- NENHUMA operação aberta no momento. Aguardando novo setup institucional.'}
+- Motivo: ${telemetry.ai_status}
+` : '- NENHUMA operação aberta no momento.'}
 
-INSTRUÇÕES DE RESPOSTA:
-1. Responda em português com tom profissional de trader pro.
-2. Se o usuário perguntar sobre o dia ou trades, faça um resumo detalhado usando os dados acima.
-3. Se o usuário perguntar sobre a operação aberta, explique o motivo da entrada e a situação do SL/TP/PnL.
-4. Se o usuário pedir para alterar algum parâmetro operacional (ex: mudar risco, ativo, timeframe), confirme a alteração e finalize OBRIGATORIAMENTE incluindo um bloco JSON com as propriedades alteradas, por exemplo: {"risk_per_trade_pct": 0.5, "active_symbol": "US30"}.
+INSTRUÇÕES:
+1. Responda em português de forma clara e profissional.
+2. Se o usuário pedir resumo do dia, use as métricas acima (destaque lucro em R e taxa de acerto).
+3. Se perguntar sobre o trade aberto, dê o status detalhado.
+4. Se pedir alterações de risco/ativo/timeframe, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON: {"risk_per_trade_pct": 0.5, "active_symbol": "US30"}.
 `;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${geminiKey.trim()}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: `${systemPrompt}\n\nMENSAGEM DO USUÁRIO: ${userText}` }]
-            }
-          ]
-        })
-      });
+      let reply = "";
+      const key = aiApiKey.trim();
 
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      if (!key) {
+        throw new Error("Cole sua chave gratuita da Groq (começa com gsk_) no campo KEY acima.");
+      }
 
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Desculpe, tive um lapso momentâneo na conexão com o mercado.";
+      // Se for chave da Groq (padrão recomendado: gsk_...)
+      if (key.startsWith("gsk_")) {
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...messages.slice(-4),
+              { role: "user", content: userText }
+            ],
+            temperature: 0.5
+          })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
+        reply = data.choices[0].message.content;
+      } else {
+        // Fallback para Gemini (usando gemini-2.0-flash-lite para evitar sobrecarga)
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${systemPrompt}\n\nPERGUNTA: ${userText}` }] }]
+          })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error.message);
+        reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sem resposta.";
+      }
 
-      // Se a IA ordenou mudança de parâmetros via JSON
+      // Processa comando JSON se a IA pediu para mudar parâmetros
       if (reply.includes('{') && reply.includes('}')) {
         const jsonMatch = reply.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
@@ -166,17 +186,14 @@ INSTRUÇÕES DE RESPOSTA:
             const parsed = JSON.parse(jsonMatch[0]);
             await updateConfig(parsed);
           } catch (e) {
-            console.error("Erro ao aplicar comando do Money Maker:", e);
+            console.error("Erro JSON:", e);
           }
         }
       }
 
       setMessages(prev => [...prev, { role: 'assistant', text: reply.replace(/\{[\s\S]*?\}/g, '').trim() }]);
     } catch (err) {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        text: `⚠️ Erro de conexão com a API do Gemini: ${err.message}. Verifique a chave configurada no topo do chat.` 
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${err.message}` }]);
     } finally {
       setIsThinking(false);
     }
@@ -453,10 +470,9 @@ INSTRUÇÕES DE RESPOSTA:
       </div>
 
       {/* ======================================================== */}
-      {/* 🤖 ASSISTENTE FLUTUANTE: MONEY MAKER                    */}
+      {/* 🤖 ASSISTENTE FLUTUANTE: MONEY MAKER (GROQ / LLAMA 3.3) */}
       {/* ======================================================== */}
       
-      {/* Botão Flutuante (Canto Inferior Direito) */}
       {!isChatOpen && (
         <button
           onClick={() => setIsChatOpen(true)}
@@ -467,11 +483,9 @@ INSTRUÇÕES DE RESPOSTA:
         </button>
       )}
 
-      {/* Janela do Chat (Drawer Flutuante) */}
       {isChatOpen && (
         <div className="fixed bottom-6 right-6 w-96 max-w-[90vw] h-[540px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden font-sans">
           
-          {/* Topo do Chat */}
           <div className="bg-slate-950 p-3.5 border-b border-slate-800 flex justify-between items-center">
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
@@ -481,7 +495,7 @@ INSTRUÇÕES DE RESPOSTA:
                 <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                   Money Maker <span className="w-2 h-2 bg-emerald-400 rounded-full" />
                 </h4>
-                <p className="text-[10px] text-slate-400">Copiloto IA • Gemini Flash</p>
+                <p className="text-[10px] text-slate-400">Copiloto IA • Llama 3.3 (Groq Ultra-Fast)</p>
               </div>
             </div>
             <button
@@ -491,19 +505,21 @@ INSTRUÇÕES DE RESPOSTA:
             </button>
           </div>
 
-          {/* Campo da Chave Gemini (Editável com valor padrão preenchido) */}
+          {/* Campo da Chave (Groq ou Gemini) */}
           <div className="px-3 py-1.5 bg-slate-950/70 border-b border-slate-800 flex items-center gap-2">
             <span className="text-[9px] text-slate-400 font-mono">KEY:</span>
             <input 
               type="password"
-              value={geminiKey}
-              onChange={e => setGeminiKey(e.target.value)}
-              placeholder="Cole sua Gemini API Key..."
+              value={aiApiKey}
+              onChange={e => {
+                setAiApiKey(e.target.value);
+                localStorage.setItem('ai_key', e.target.value);
+              }}
+              placeholder="Cole sua chave Groq (gsk_...) ou Gemini..."
               className="w-full bg-transparent text-[10px] text-slate-300 font-mono focus:outline-none"
             />
           </div>
 
-          {/* Histórico de Mensagens */}
           <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs">
             {messages.map((m, i) => (
               <div key={i} className={`p-3 rounded-xl max-w-[85%] leading-relaxed ${
@@ -516,13 +532,12 @@ INSTRUÇÕES DE RESPOSTA:
             ))}
             {isThinking && (
               <div className="p-2.5 rounded-xl bg-slate-800 text-slate-400 text-xs w-28 flex items-center gap-1.5 animate-pulse">
-                <Bot size={14} /> Analisando...
+                <Bot size={14} /> Pensando...
               </div>
             )}
             <div ref={chatBottomRef} />
           </div>
 
-          {/* Input de Envio */}
           <div className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
             <input
               value={inputMsg}
