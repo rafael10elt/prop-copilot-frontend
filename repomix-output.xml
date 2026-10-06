@@ -43,6 +43,7 @@ The content is organized as follows:
 src/
   App.jsx
   main.jsx
+.gitignore
 index.html
 package.json
 vite.config.js
@@ -61,6 +62,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>
 );
+</file>
+
+<file path=".gitignore">
+node_modules
+dist
+.env
 </file>
 
 <file path="index.html">
@@ -120,9 +127,9 @@ export default defineConfig({
 </file>
 
 <file path="src/App.jsx">
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap } from 'lucide-react';
+import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight, MessageSquare, X, Send, Bot, Radar, Target, AlertOctagon } from 'lucide-react';
 
 const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
@@ -132,9 +139,9 @@ export default function App() {
   const [config, setConfig] = useState({
     prop_name: 'Prop Trader',
     account_size: 100000,
-    daily_loss_limit: 5000,
-    profit_target: 10000,
-    active_symbol: 'XAUUSD',
+    daily_loss_limit: 20, // Trava diária padrão em dólares
+    profit_target: 40,    // Meta diária padrão em dólares
+    active_symbol: 'RADAR',
     strategy_mode: 'ai_auto',
     timeframe_mode: 'manual',
     timeframe: 'M5',
@@ -150,13 +157,23 @@ export default function App() {
   const [position, setPosition] = useState({ has_position: false });
   const [metrics, setMetrics] = useState({ total_trades: 0, wins: 0, losses: 0, be_count: 0, win_rate: 0, net_profit_r: 0, net_profit_usd: 0 });
 
+  // Chat Money Maker
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_key') || import.meta.env.VITE_GROQ_API_KEY || '');
+  const [messages, setMessages] = useState([
+    { role: 'assistant', text: 'E aí, chefe! Sou o Money Maker, seu funcionário trader. Estou vigiando o gráfico e protegendo o capital da mesa. O que manda?' }
+  ]);
+  const [inputMsg, setInputMsg] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const chatBottomRef = useRef(null);
+
   useEffect(() => {
     supabase.from('prop_config').select('*').eq('id', 1).single().then(r => r.data && setConfig(r.data));
     supabase.from('bot_telemetry').select('*').eq('id', 1).single().then(r => r.data && setTelemetry(r.data));
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v3')
+    const channel = supabase.channel('desk_updates_v9')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -165,6 +182,12 @@ export default function App() {
 
     return () => supabase.removeChannel(channel);
   }, []);
+
+  useEffect(() => {
+    if (isChatOpen) {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isChatOpen]);
 
   const updateConfig = async (fields) => {
     setConfig(prev => ({ ...prev, ...fields }));
@@ -182,14 +205,150 @@ export default function App() {
     switch (mode) {
       case 'fvg': return 'FVG (Fair Value Gap)';
       case 'smc': return 'SMC (Liquidity Sweep)';
-      case 'price_action': return 'Price Action Rejection';
-      case 'trend_vwap': return 'Trend Pullback (VWAP)';
-      default: return '🤖 IA Auto-Select (Adaptativo)';
+      case 'price_action': return 'Price Action';
+      case 'trend_vwap': return 'Trend Pullback';
+      default: return '🤖 IA Auto-Select';
+    }
+  };
+
+  const calculateTradeProgress = () => {
+    if (!position.has_position || !position.sl || !position.tp || position.sl === position.tp) return 50;
+    const totalSpan = Math.abs(position.tp - position.sl);
+    if (totalSpan === 0) return 50;
+    const currentDist = position.type === 'BUY' 
+      ? position.current_price - position.sl 
+      : position.sl - position.current_price;
+    const pct = (currentDist / totalSpan) * 100;
+    return Math.max(5, Math.min(95, pct));
+  };
+
+  // Lucro/Prejuízo oficial do dia: soma histórico fechado + flutuante atual
+  const floatingPnL = position.has_position ? (position.pnl_usd || 0) : 0;
+  const realDayPnL = (metrics.net_profit_usd || 0) + floatingPnL;
+
+  const dailyLossLimit = config.daily_loss_limit || 150;
+  const profitTarget = config.profit_target || 1000;
+
+  const lossUsedPct = realDayPnL < 0 ? Math.min(100, (Math.abs(realDayPnL) / dailyLossLimit) * 100) : 0;
+  const targetAchievedPct = realDayPnL > 0 ? Math.min(100, (realDayPnL / profitTarget) * 100) : 0;
+  // Chat com Money Maker
+  const handleSendMessage = async () => {
+    if (!inputMsg.trim() || isThinking) return;
+    const userText = inputMsg;
+    setInputMsg('');
+    setMessages(prev => [...prev, { role: 'user', text: userText }]);
+    setIsThinking(true);
+
+const systemPrompt = `
+Você é o "Money Maker", o funcionário trader institucional responsável por operar e gerenciar esta conta de mesa proprietária.
+Você é direto, analítico, seguro e com foco absoluto em compliance e preservação de capital.
+
+DADOS EM TEMPO REAL DA CONTA:
+- Mesa: ${config.prop_name}
+- Saldo: $${telemetry.balance} | Equity: $${telemetry.equity}
+- Trava Diária: -$${config.daily_loss_limit} | Meta do Dia: +$${config.profit_target}
+- PnL do Dia: $${telemetry.daily_pnl}
+- Risco por Trade: ${config.risk_per_trade_pct}%
+- Modo de Ativo: ${config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO (Ouro, Petróleo, Nasdaq, US30)' : config.active_symbol} (${config.timeframe})
+- Estratégia Ativa: ${getStrategyLabel(config.strategy_mode)}
+- Diagnóstico IA: ${telemetry.ai_status}
+
+MÉTRICAS DO PREGÃO HOJE:
+- Trades: ${metrics.total_trades} | Acerto: ${metrics.win_rate}%
+- Wins: ${metrics.wins} | Losses: ${metrics.losses} | BE: ${metrics.be_count}
+- Lucro Líquido: ${metrics.net_profit_r} R ($${metrics.net_profit_usd})
+
+OPERAÇÃO ABERTA:
+${position.has_position ? `
+- ATIVA: ${position.type} no ${position.symbol} (${position.lots} lotes)
+- Entrada: ${position.open_price} | Atual: ${position.current_price}
+- SL: ${position.sl} | TP: ${position.tp}
+- PnL Flutuante: $${position.pnl_usd} (${position.pnl_r} R)
+- Motivo: ${telemetry.ai_status}
+` : '- NENHUMA operação aberta no momento.'}
+
+REGRAS DE FORMATAÇÃO E RESPOSTA:
+1. NUNCA USE TABELAS DE MARKDOWN (o chat é compacto).
+2. Use SEMPRE moeda em Dólar ($). NUNCA mencione Real (R$).
+3. Formate SEMPRE em tópicos curtos, limpos e com emojis, assim:
+   📊 RESUMO DO PREGÃO:
+   • Saldo / Equity: $...
+   • PnL do Dia: $... (... R)
+   • Trades: X (X Wins | X Losses)
+   • Trava Diária: -$... (Folga restante: $...)
+
+   💡 STATUS OPERACIONAL:
+   • Explicação breve em 1 ou 2 linhas.
+4. Se o usuário pedir para alterar algum parâmetro, confirme e inclua no final o JSON: {"risk_per_trade_pct": 0.5}.
+`;
+    try {
+      const key = aiApiKey.trim();
+      if (!key) {
+        throw new Error("Cole sua chave gratuita da Groq (começa com gsk_) no campo KEY acima.");
+      }
+
+      const historicoFormatado = messages.slice(-4).map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.text || ""
+      }));
+
+      let modeloEscolhido = "openai/gpt-oss-20b";
+      try {
+        const modelsRes = await fetch("https://api.groq.com/openai/v1/models", {
+          headers: { "Authorization": `Bearer ${key}` }
+        });
+        const modelsData = await modelsRes.json();
+        if (modelsData.data && modelsData.data.length > 0) {
+          const ids = modelsData.data.map(m => m.id);
+          modeloEscolhido = ids.find(id => id.includes('gpt-oss-20b') || id.includes('qwen') || id.includes('gpt-oss') || id.includes('instant')) || ids[0];
+        }
+      } catch (errModels) {
+        console.log("Usando modelo padrão:", modeloEscolhido);
+      }
+
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: modeloEscolhido,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...historicoFormatado,
+            { role: "user", content: userText }
+          ],
+          temperature: 0.5
+        })
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const reply = data.choices?.[0]?.message?.content || "Sem resposta.";
+
+      if (reply.includes('{') && reply.includes('}')) {
+        const jsonMatch = reply.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            await updateConfig(parsed);
+          } catch (e) {
+            console.error("Erro JSON:", e);
+          }
+        }
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', text: reply.replace(/\{[\s\S]*?\}/g, '').trim() }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${err.message}` }]);
+    } finally {
+      setIsThinking(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 p-4 md:p-6 text-slate-100 font-sans">
+    <div className="min-h-screen bg-slate-950 p-4 md:p-6 text-slate-100 font-sans relative">
       {/* Header */}
       <header className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row justify-between items-center gap-4 mb-5 shadow-xl">
         <div className="flex items-center gap-3">
@@ -199,8 +358,9 @@ export default function App() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-white tracking-wide">{config.prop_name || 'Prop'} Copilot</h1>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">
-                {config.active_symbol} • {config.timeframe_mode === 'ai_dynamic' ? 'IA Multi-TF' : config.timeframe}
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+                {config.active_symbol === 'RADAR' ? <Radar size={11} className="animate-spin text-emerald-400" /> : null}
+                {config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO' : config.active_symbol} • {config.timeframe_mode === 'ai_dynamic' ? 'IA Multi-TF' : config.timeframe}
               </span>
               <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
                 <Zap size={10} /> {getStrategyLabel(config.strategy_mode)}
@@ -219,7 +379,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* Grid Superior: Métricas do Pregão */}
+      {/* Grid Superior: Métricas do Pregão & Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
         <div className="md:col-span-2 bg-[#0a0f1d] border border-slate-800 rounded-xl p-5 shadow-xl font-mono">
           <div className="flex justify-between items-center text-xs md:text-sm text-amber-400 font-bold border-b border-slate-800 pb-2 mb-3">
@@ -260,53 +420,152 @@ export default function App() {
         </div>
       </div>
 
-      {/* Grid Inferior: Operação Aberta & Painel de Estratégias */}
+      {/* NOVO BLOCO: LIMITES DIÁRIOS VISUAIS & AJUSTÁVEIS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5 font-sans">
+        
+        {/* CARD 1: TRAVA DE PERDA DIÁRIA */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5 uppercase tracking-wide">
+              <AlertOctagon size={16} /> Trava Perda Diária (Hard Stop)
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-400 font-mono">$</span>
+              <input
+                type="number"
+                step="1"
+                value={config.daily_loss_limit || ''}
+                onChange={e => updateConfig({ daily_loss_limit: parseFloat(e.target.value) || 0 })}
+                className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-right font-mono font-bold text-rose-300 focus:border-rose-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
+              <span>Perda Hoje: <strong className={realDayPnL < 0 ? "text-rose-400" : "text-slate-300"}>${Math.abs(Math.min(0, realDayPnL)).toFixed(2)}</strong></span>
+              <span>Limite: ${dailyLossLimit.toFixed(2)}</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-500 ${lossUsedPct > 70 ? 'bg-rose-600 animate-pulse' : 'bg-rose-500'}`}
+                style={{ width: `${lossUsedPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* CARD 2: META DE GANHO DO DIA */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wide">
+              <Target size={16} /> Meta de Lucro do Dia (Take Profit)
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-400 font-mono">$</span>
+              <input
+                type="number"
+                step="1"
+                value={config.profit_target || ''}
+                onChange={e => updateConfig({ profit_target: parseFloat(e.target.value) || 0 })}
+                className="w-20 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-right font-mono font-bold text-emerald-300 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[11px] font-mono mb-1 text-slate-400">
+              <span>Lucro Hoje: <strong className={realDayPnL > 0 ? "text-emerald-400" : "text-slate-300"}>+${Math.max(0, realDayPnL).toFixed(2)}</strong></span>
+              <span>Meta: ${profitTarget.toFixed(2)} ({targetAchievedPct.toFixed(0)}%)</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div 
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${targetAchievedPct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Grid Inferior: Operação Aberta & Parâmetros */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
-        {/* OPERAÇÃO ABERTA (ÚNICA) */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
+        {/* OPERAÇÃO ABERTA */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between font-sans">
           <div>
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <PlayCircle size={16} className="text-blue-400" /> Operação Aberta (Única)
+                <PlayCircle size={16} className="text-blue-400" /> Operação Aberta
               </h3>
               {position.has_position && (
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded animate-pulse">
-                  AO VIVO
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold animate-pulse">
+                  AO VIVO • #{position.ticket}
                 </span>
               )}
             </div>
 
             {position.has_position ? (
-              <div className="space-y-2.5 font-mono text-xs">
-                <div className="flex justify-between border-b border-slate-800 pb-2">
-                  <span className="text-slate-400">Ativo / Tipo:</span>
-                  <span className={`font-bold ${position.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {position.symbol} • {position.type} ({position.lots} lotes)
-                  </span>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold font-mono flex items-center gap-1 ${
+                      position.type === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                    }`}>
+                      {position.type === 'BUY' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                      {position.type}
+                    </span>
+                    <span className="font-bold text-white text-sm">{position.symbol}</span>
+                  </div>
+                  <span className="font-mono text-xs text-slate-400">{position.lots} lotes</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Entrada:</span>
-                  <span>{position.open_price}</span>
+
+                <div className="grid grid-cols-3 gap-2 text-center font-mono">
+                  <div className="bg-rose-950/30 border border-rose-900/50 p-2 rounded-lg">
+                    <span className="text-[10px] text-rose-400 font-sans block font-semibold">STOP LOSS</span>
+                    <strong className="text-xs text-rose-200">{position.sl || '---'}</strong>
+                    <span className="text-[9px] text-rose-400 block mt-0.5 font-sans">-1.0 R</span>
+                  </div>
+
+                  <div className="bg-blue-950/30 border border-blue-900/50 p-2 rounded-lg">
+                    <span className="text-[10px] text-blue-400 font-sans block font-semibold">ENTRADA</span>
+                    <strong className="text-xs text-blue-200">{position.open_price}</strong>
+                    <span className="text-[9px] text-slate-400 block mt-0.5 font-sans">Execução</span>
+                  </div>
+
+                  <div className="bg-emerald-950/30 border border-emerald-900/50 p-2 rounded-lg">
+                    <span className="text-[10px] text-emerald-400 font-sans block font-semibold">TAKE PROFIT</span>
+                    <strong className="text-xs text-emerald-200">{position.tp || '---'}</strong>
+                    <span className="text-[9px] text-emerald-400 block mt-0.5 font-sans">+{config.target_rr} R</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Preço Atual:</span>
-                  <span className="text-white font-bold">{position.current_price}</span>
+
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <div className="flex justify-between text-[10px] font-mono text-slate-400 mb-1.5">
+                    <span className="text-rose-400">SL</span>
+                    <span className="text-white font-bold">Atual: {position.current_price}</span>
+                    <span className="text-emerald-400">TP</span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-2 rounded-full relative overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-700 ${position.pnl_usd >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                      style={{ width: `${calculateTradeProgress()}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">SL / TP:</span>
-                  <span className="text-slate-300">{position.sl} / {position.tp}</span>
-                </div>
-                <div className="flex justify-between pt-2 border-t border-slate-800 text-sm">
-                  <span className="text-slate-400">PnL Flutuante:</span>
-                  <span className={`font-black ${position.pnl_usd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {position.pnl_usd >= 0 ? '+$' : '-$'}{Math.abs(position.pnl_usd).toFixed(2)} ({position.pnl_r} R)
-                  </span>
+
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                  <span className="text-xs text-slate-400 font-sans">PnL Flutuante:</span>
+                  <div className="text-right">
+                    <span className={`text-base font-black font-mono ${position.pnl_usd >= 0 ? 'text-[#00ff66]' : 'text-rose-500'}`}>
+                      {position.pnl_usd >= 0 ? '+$' : '-$'}{Math.abs(position.pnl_usd).toFixed(2)}
+                    </span>
+                    <span className="text-xs font-mono text-slate-400 ml-1.5">({position.pnl_r} R)</span>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="py-12 text-center text-slate-500 text-xs">
-                Nenhuma operação aberta no momento.<br />Aguardando gatilho institucional.
+              <div className="py-12 text-center text-slate-500 text-xs font-sans">
+                Nenhuma operação aberta no momento.<br />Aguardando gatilho institucional no gráfico.
               </div>
             )}
           </div>
@@ -320,47 +579,43 @@ export default function App() {
           )}
         </div>
 
-        {/* CONTROLES E SELEÇÃO DE ESTRATÉGIA */}
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 text-xs">
+        {/* PARÂMETROS OPERACIONAIS */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 text-xs font-sans">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Sliders size={16} className="text-blue-400" /> Estratégia e Parâmetros
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* SELETOR DE ESTRATÉGIA */}
             <div>
-              <label className="text-slate-400 block mb-1">Estratégia Operacional</label>
+              <label className="text-slate-400 block mb-1">Estratégia</label>
               <select
                 value={config.strategy_mode || 'ai_auto'}
                 onChange={e => updateConfig({ strategy_mode: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-blue-400 font-bold focus:border-blue-500">
-                <option value="ai_auto">🤖 IA Auto-Select (Avalia Cenário em Tempo Real)</option>
-                <option value="fvg">⚡ FVG (Fair Value Gap / Desbalanceamento)</option>
-                <option value="smc">🎯 SMC (Liquidity Sweep em Topos/Fundos)</option>
-                <option value="price_action">🕯️ Price Action (Exaustão e Rejeição)</option>
-                <option value="trend_vwap">📈 Trend Pullback (Tendência na VWAP/Média)</option>
+                <option value="ai_auto">🤖 IA Auto-Select (Adaptativo)</option>
+                <option value="fvg">⚡ FVG (Fair Value Gap)</option>
+                <option value="smc">🎯 SMC (Liquidity Sweep)</option>
+                <option value="price_action">🕯️ Price Action (Rejeição)</option>
+                <option value="trend_vwap">📈 Trend Pullback</option>
               </select>
             </div>
 
-            {/* SELETOR DE ATIVO */}
             <div>
-              <label className="text-slate-400 block mb-1">Ativo em Operação</label>
+              <label className="text-slate-400 block mb-1">Ativo de Foco</label>
               <select
                 value={config.active_symbol}
                 onChange={e => updateConfig({ active_symbol: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white font-semibold">
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-emerald-400 font-semibold">
+                <option value="RADAR">🤖 AUTO / RADAR (Varre Ouro, Petróleo, Nasdaq e US30)</option>
                 <option value="XAUUSD">XAUUSD (Ouro)</option>
                 <option value="USOIL">USOIL / WTI (Petróleo)</option>
                 <option value="NAS100">NAS100 (Nasdaq)</option>
                 <option value="US30">US30 (Dow Jones)</option>
               </select>
             </div>
-
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-800">
-            {/* TIMEFRAME */}
             <div>
               <label className="text-slate-400 block mb-1">Timeframe</label>
               <select
@@ -374,25 +629,25 @@ export default function App() {
                 }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
                 <option value="ai">🤖 IA Dinâmica (M15->M5)</option>
-                <option value="M1">Manual: M1 (Scalp Rápido)</option>
-                <option value="M5">Manual: M5 (Padrão)</option>
-                <option value="M15">Manual: M15 (Estrutura)</option>
+                <option value="M1">Manual: M1</option>
+                <option value="M5">Manual: M5</option>
+                <option value="M15">Manual: M15</option>
               </select>
             </div>
 
-            {/* ALVO R:R */}
             <div>
-              <label className="text-slate-400 block mb-1">Modo de Alvo (R:R)</label>
+              <label className="text-slate-400 block mb-1">Relação R:R</label>
               <select
-                value={config.rr_mode}
-                onChange={e => updateConfig({ rr_mode: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
-                <option value="manual">Manual (Fixo)</option>
-                <option value="ai">IA Adaptativa (Cenário)</option>
+                value={Number(config.target_rr || 1.5)}
+                onChange={e => updateConfig({ target_rr: Number(e.target.value) })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono">
+                <option value={1}>1:1.0</option>
+                <option value={1.5}>1:1.5 (Padrão)</option>
+                <option value={2}>1:2.0</option>
+                <option value={3}>1:3.0</option>
               </select>
             </div>
 
-            {/* BREAK-EVEN */}
             <div>
               <label className="text-slate-400 block mb-1">Auto Break-Even</label>
               <button
@@ -430,6 +685,94 @@ export default function App() {
         </div>
 
       </div>
+
+      {/* ======================================================== */}
+      {/* 🤖 ASSISTENTE FLUTUANTE: MONEY MAKER                    */}
+      {/* ======================================================== */}
+      
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white p-3.5 rounded-full shadow-2xl shadow-blue-500/30 flex items-center gap-2.5 transition-all transform hover:scale-105 z-50">
+          <Bot size={22} />
+          <span className="font-bold text-xs pr-1">Money Maker</span>
+          <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+        </button>
+      )}
+
+      {isChatOpen && (
+        <div className="fixed bottom-6 right-6 w-96 max-w-[90vw] h-[540px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden font-sans">
+          
+          <div className="bg-slate-950 p-3.5 border-b border-slate-800 flex justify-between items-center">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                <Bot size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  Money Maker <span className="w-2 h-2 bg-emerald-400 rounded-full" />
+                </h4>
+                <p className="text-[10px] text-slate-400">Copiloto IA • Auto-Detect</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsChatOpen(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-all">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="px-3 py-1.5 bg-slate-950/70 border-b border-slate-800 flex items-center gap-2">
+            <span className="text-[9px] text-slate-400 font-mono">KEY:</span>
+            <input 
+              type="password"
+              value={aiApiKey}
+              onChange={e => {
+                setAiApiKey(e.target.value);
+                localStorage.setItem('ai_key', e.target.value);
+              }}
+              placeholder="Cole sua chave Groq (gsk_...)"
+              className="w-full bg-transparent text-[10px] text-slate-300 font-mono focus:outline-none"
+            />
+          </div>
+
+          <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs">
+            {messages.map((m, i) => (
+              <div key={i} className={`p-3 rounded-xl max-w-[85%] leading-relaxed whitespace-pre-wrap font-sans ${
+                m.role === 'user' 
+                  ? 'ml-auto bg-blue-600 text-white font-medium shadow-md' 
+                  : 'bg-slate-800 text-slate-200 border border-slate-700/60'
+              }`}>
+                {m.text}
+              </div>
+            ))}
+            {isThinking && (
+              <div className="p-2.5 rounded-xl bg-slate-800 text-slate-400 text-xs w-28 flex items-center gap-1.5 animate-pulse">
+                <Bot size={14} /> Pensando...
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          <div className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
+            <input
+              value={inputMsg}
+              onChange={e => setInputMsg(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Ex: Mude a trava para $15 e a meta para $30..."
+              className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={isThinking}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all">
+              <Send size={14} />
+            </button>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }

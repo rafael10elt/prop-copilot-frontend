@@ -110,17 +110,17 @@ export default function App() {
     setMessages(prev => [...prev, { role: 'user', text: userText }]);
     setIsThinking(true);
 
-    const systemPrompt = `
-Você é o "Money Maker", o funcionário trader institucional de elite responsável por operar e gerenciar esta conta de mesa proprietária.
+const systemPrompt = `
+Você é o "Money Maker", o funcionário trader institucional responsável por operar e gerenciar esta conta de mesa proprietária.
 Você é direto, analítico, seguro e com foco absoluto em compliance e preservação de capital.
 
 DADOS EM TEMPO REAL DA CONTA:
 - Mesa: ${config.prop_name}
 - Saldo: $${telemetry.balance} | Equity: $${telemetry.equity}
-- Trava de Perda Diária: -$${config.daily_loss_limit} | Meta de Lucro do Dia: +$${config.profit_target}
+- Trava Diária: -$${config.daily_loss_limit} | Meta do Dia: +$${config.profit_target}
 - PnL do Dia: $${telemetry.daily_pnl}
 - Risco por Trade: ${config.risk_per_trade_pct}%
-- Modo de Ativo: ${config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO (Varrendo Ouro, Petróleo, Nasdaq e US30)' : config.active_symbol} (${config.timeframe})
+- Modo de Ativo: ${config.active_symbol === 'RADAR' ? 'RADAR MULTI-ATIVO (Ouro, Petróleo, Nasdaq, US30)' : config.active_symbol} (${config.timeframe})
 - Estratégia Ativa: ${getStrategyLabel(config.strategy_mode)}
 - Diagnóstico IA: ${telemetry.ai_status}
 
@@ -138,12 +138,20 @@ ${position.has_position ? `
 - Motivo: ${telemetry.ai_status}
 ` : '- NENHUMA operação aberta no momento.'}
 
-INSTRUÇÕES:
-1. Responda em português de forma clara e profissional de trader sênior.
-2. Se o usuário pedir para alterar a trava de perda diária ou a meta de ganho, confirme e inclua no final OBRIGATORIAMENTE um bloco JSON com as propriedades: {"daily_loss_limit": 25, "profit_target": 50}.
-3. Você também pode alterar risco por trade ("risk_per_trade_pct"), ativo ("active_symbol") e timeframe ("timeframe").
-`;
+REGRAS DE FORMATAÇÃO E RESPOSTA:
+1. NUNCA USE TABELAS DE MARKDOWN (o chat é compacto).
+2. Use SEMPRE moeda em Dólar ($). NUNCA mencione Real (R$).
+3. Formate SEMPRE em tópicos curtos, limpos e com emojis, assim:
+   📊 RESUMO DO PREGÃO:
+   • Saldo / Equity: $...
+   • PnL do Dia: $... (... R)
+   • Trades: X (X Wins | X Losses)
+   • Trava Diária: -$... (Folga restante: $...)
 
+   💡 STATUS OPERACIONAL:
+   • Explicação breve em 1 ou 2 linhas.
+4. Se o usuário pedir para alterar algum parâmetro, confirme e inclua no final o JSON: {"risk_per_trade_pct": 0.5}.
+`;
     try {
       const key = aiApiKey.trim();
       if (!key) {
@@ -601,7 +609,7 @@ INSTRUÇÕES:
 
           <div className="flex-1 p-3.5 overflow-y-auto space-y-3 text-xs">
             {messages.map((m, i) => (
-              <div key={i} className={`p-3 rounded-xl max-w-[85%] leading-relaxed ${
+              <div key={i} className={`p-3 rounded-xl max-w-[85%] leading-relaxed whitespace-pre-wrap font-sans ${
                 m.role === 'user' 
                   ? 'ml-auto bg-blue-600 text-white font-medium shadow-md' 
                   : 'bg-slate-800 text-slate-200 border border-slate-700/60'
