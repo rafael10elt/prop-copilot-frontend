@@ -501,13 +501,13 @@ INSTRUÇÕES:
             <div>
               <label className="text-slate-400 block mb-1">Relação R:R</label>
               <select
-                value={config.target_rr}
-                onChange={e => updateConfig({ target_rr: parseFloat(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
-                <option value="1.0">1:1.0</option>
-                <option value="1.5">1:1.5 (Padrão)</option>
-                <option value="2.0">1:2.0</option>
-                <option value="3.0">1:3.0</option>
+                value={Number(config.target_rr || 1.5)}
+                onChange={e => updateConfig({ target_rr: Number(e.target.value) })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white font-mono">
+                <option value={1}>1:1.0</option>
+                <option value={1.5}>1:1.5 (Padrão)</option>
+                <option value={2}>1:2.0</option>
+                <option value={3}>1:3.0</option>
               </select>
             </div>
 
