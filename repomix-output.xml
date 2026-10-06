@@ -1,6 +1,128 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  App.jsx
+  main.jsx
+index.html
+package.json
+vite.config.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/main.jsx">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+</file>
+
+<file path="index.html">
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prop Copilot AI - Desk</title>
+    <!-- Tailwind CSS direto via CDN para carregamento ultra-rápido -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      .font-mono { font-family: 'JetBrains Mono', monospace; }
+    </style>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="package.json">
+{
+  "name": "prop-copilot-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.8",
+    "lucide-react": "^0.359.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.6"
+  }
+}
+</file>
+
+<file path="vite.config.js">
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
+</file>
+
+<file path="src/App.jsx">
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ShieldAlert, Cpu, Sliders, PlayCircle, XCircle, Zap } from 'lucide-react';
 
 const SUPABASE_URL = "https://wvyllpbqtahxrqsjjzgp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2eWxscGJxdGFoeHJxc2pqemdwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyMzU3NzEsImV4cCI6MjEwNjgxMTc3MX0.7qIsu2oZermD9uPA8ggSfNZuKDZH-_ifs2jJjeTX6XM";
@@ -34,7 +156,7 @@ export default function App() {
     supabase.from('active_position').select('*').eq('id', 1).single().then(r => r.data && setPosition(r.data));
     supabase.from('session_metrics').select('*').eq('id', 1).single().then(r => r.data && setMetrics(r.data));
 
-    const channel = supabase.channel('desk_updates_v4')
+    const channel = supabase.channel('desk_updates_v3')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'prop_config' }, p => setConfig(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bot_telemetry' }, p => setTelemetry(p.new))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'active_position' }, p => setPosition(p.new))
@@ -60,22 +182,10 @@ export default function App() {
     switch (mode) {
       case 'fvg': return 'FVG (Fair Value Gap)';
       case 'smc': return 'SMC (Liquidity Sweep)';
-      case 'price_action': return 'Price Action';
-      case 'trend_vwap': return 'Trend Pullback';
-      default: return '🤖 IA Auto-Select';
+      case 'price_action': return 'Price Action Rejection';
+      case 'trend_vwap': return 'Trend Pullback (VWAP)';
+      default: return '🤖 IA Auto-Select (Adaptativo)';
     }
-  };
-
-  // Cálculo da porcentagem de progresso visual do trade entre SL (0%) e TP (100%)
-  const calculateTradeProgress = () => {
-    if (!position.has_position || !position.sl || !position.tp || position.sl === position.tp) return 50;
-    const totalSpan = Math.abs(position.tp - position.sl);
-    if (totalSpan === 0) return 50;
-    const currentDist = position.type === 'BUY' 
-      ? position.current_price - position.sl 
-      : position.sl - position.current_price;
-    const pct = (currentDist / totalSpan) * 100;
-    return Math.max(5, Math.min(95, pct));
   };
 
   return (
@@ -150,92 +260,53 @@ export default function App() {
         </div>
       </div>
 
-      {/* Grid Inferior: Operação Aberta com Detalhes Visuais de Entrada/SL/TP */}
+      {/* Grid Inferior: Operação Aberta & Painel de Estratégias */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
-        {/* OPERAÇÃO ABERTA (DETALHAMENTO NUMÉRICO E VISUAL) */}
+        {/* OPERAÇÃO ABERTA (ÚNICA) */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <PlayCircle size={16} className="text-blue-400" /> Operação Aberta
+                <PlayCircle size={16} className="text-blue-400" /> Operação Aberta (Única)
               </h3>
               {position.has_position && (
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold animate-pulse">
-                  AO VIVO • TICKET #{position.ticket}
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded animate-pulse">
+                  AO VIVO
                 </span>
               )}
             </div>
 
             {position.has_position ? (
-              <div className="space-y-4">
-                {/* Cabeçalho do Trade */}
-                <div className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold font-mono flex items-center gap-1 ${
-                      position.type === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                    }`}>
-                      {position.type === 'BUY' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                      {position.type}
-                    </span>
-                    <span className="font-bold text-white text-sm">{position.symbol}</span>
-                  </div>
-                  <span className="font-mono text-xs text-slate-400">{position.lots} lotes</span>
+              <div className="space-y-2.5 font-mono text-xs">
+                <div className="flex justify-between border-b border-slate-800 pb-2">
+                  <span className="text-slate-400">Ativo / Tipo:</span>
+                  <span className={`font-bold ${position.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {position.symbol} • {position.type} ({position.lots} lotes)
+                  </span>
                 </div>
-
-                {/* 3 BLOCOS NUMÉRICOS: SL, ENTRADA E TP */}
-                <div className="grid grid-cols-3 gap-2 text-center font-mono">
-                  {/* STOP LOSS */}
-                  <div className="bg-rose-950/30 border border-rose-900/50 p-2 rounded-lg">
-                    <span className="text-[10px] text-rose-400 font-sans block font-semibold">STOP LOSS</span>
-                    <strong className="text-xs text-rose-200">{position.sl || '---'}</strong>
-                    <span className="text-[9px] text-rose-400 block mt-0.5 font-sans">-1.0 R</span>
-                  </div>
-
-                  {/* PREÇO DE ENTRADA */}
-                  <div className="bg-blue-950/30 border border-blue-900/50 p-2 rounded-lg">
-                    <span className="text-[10px] text-blue-400 font-sans block font-semibold">ENTRADA</span>
-                    <strong className="text-xs text-blue-200">{position.open_price}</strong>
-                    <span className="text-[9px] text-slate-400 block mt-0.5 font-sans">Execução</span>
-                  </div>
-
-                  {/* TAKE PROFIT */}
-                  <div className="bg-emerald-950/30 border border-emerald-900/50 p-2 rounded-lg">
-                    <span className="text-[10px] text-emerald-400 font-sans block font-semibold">TAKE PROFIT</span>
-                    <strong className="text-xs text-emerald-200">{position.tp || '---'}</strong>
-                    <span className="text-[9px] text-emerald-400 block mt-0.5 font-sans">+{config.target_rr} R</span>
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Entrada:</span>
+                  <span>{position.open_price}</span>
                 </div>
-
-                {/* RÉGUA VISUAL DE TRAJETÓRIA DO PREÇO */}
-                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                  <div className="flex justify-between text-[10px] font-mono text-slate-400 mb-1.5">
-                    <span className="text-rose-400">SL</span>
-                    <span className="text-white font-bold">Atual: {position.current_price}</span>
-                    <span className="text-emerald-400">TP</span>
-                  </div>
-                  <div className="w-full bg-slate-800 h-2 rounded-full relative overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-700 ${position.pnl_usd >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                      style={{ width: `${calculateTradeProgress()}%` }}
-                    />
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Preço Atual:</span>
+                  <span className="text-white font-bold">{position.current_price}</span>
                 </div>
-
-                {/* RESULTADO FLUTUANTE ATUAL */}
-                <div className="flex justify-between items-center pt-2 border-t border-slate-800">
-                  <span className="text-xs text-slate-400 font-sans">PnL Flutuante:</span>
-                  <div className="text-right">
-                    <span className={`text-base font-black font-mono ${position.pnl_usd >= 0 ? 'text-[#00ff66]' : 'text-rose-500'}`}>
-                      {position.pnl_usd >= 0 ? '+$' : '-$'}{Math.abs(position.pnl_usd).toFixed(2)}
-                    </span>
-                    <span className="text-xs font-mono text-slate-400 ml-1.5">({position.pnl_r} R)</span>
-                  </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">SL / TP:</span>
+                  <span className="text-slate-300">{position.sl} / {position.tp}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-800 text-sm">
+                  <span className="text-slate-400">PnL Flutuante:</span>
+                  <span className={`font-black ${position.pnl_usd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {position.pnl_usd >= 0 ? '+$' : '-$'}{Math.abs(position.pnl_usd).toFixed(2)} ({position.pnl_r} R)
+                  </span>
                 </div>
               </div>
             ) : (
-              <div className="py-12 text-center text-slate-500 text-xs font-sans">
-                Nenhuma operação aberta no momento.<br />Aguardando gatilho institucional no gráfico.
+              <div className="py-12 text-center text-slate-500 text-xs">
+                Nenhuma operação aberta no momento.<br />Aguardando gatilho institucional.
               </div>
             )}
           </div>
@@ -249,29 +320,32 @@ export default function App() {
           )}
         </div>
 
-        {/* PARÂMETROS OPERACIONAIS */}
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 text-xs font-sans">
+        {/* CONTROLES E SELEÇÃO DE ESTRATÉGIA */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4 text-xs">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Sliders size={16} className="text-blue-400" /> Estratégia e Parâmetros
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* SELETOR DE ESTRATÉGIA */}
             <div>
-              <label className="text-slate-400 block mb-1">Estratégia</label>
+              <label className="text-slate-400 block mb-1">Estratégia Operacional</label>
               <select
                 value={config.strategy_mode || 'ai_auto'}
                 onChange={e => updateConfig({ strategy_mode: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-blue-400 font-bold focus:border-blue-500">
-                <option value="ai_auto">🤖 IA Auto-Select (Adaptativo)</option>
-                <option value="fvg">⚡ FVG (Fair Value Gap)</option>
-                <option value="smc">🎯 SMC (Liquidity Sweep)</option>
-                <option value="price_action">🕯️ Price Action (Rejeição)</option>
-                <option value="trend_vwap">📈 Trend Pullback</option>
+                <option value="ai_auto">🤖 IA Auto-Select (Avalia Cenário em Tempo Real)</option>
+                <option value="fvg">⚡ FVG (Fair Value Gap / Desbalanceamento)</option>
+                <option value="smc">🎯 SMC (Liquidity Sweep em Topos/Fundos)</option>
+                <option value="price_action">🕯️ Price Action (Exaustão e Rejeição)</option>
+                <option value="trend_vwap">📈 Trend Pullback (Tendência na VWAP/Média)</option>
               </select>
             </div>
 
+            {/* SELETOR DE ATIVO */}
             <div>
-              <label className="text-slate-400 block mb-1">Ativo de Foco</label>
+              <label className="text-slate-400 block mb-1">Ativo em Operação</label>
               <select
                 value={config.active_symbol}
                 onChange={e => updateConfig({ active_symbol: e.target.value })}
@@ -282,9 +356,11 @@ export default function App() {
                 <option value="US30">US30 (Dow Jones)</option>
               </select>
             </div>
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-800">
+            {/* TIMEFRAME */}
             <div>
               <label className="text-slate-400 block mb-1">Timeframe</label>
               <select
@@ -298,25 +374,25 @@ export default function App() {
                 }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
                 <option value="ai">🤖 IA Dinâmica (M15->M5)</option>
-                <option value="M1">Manual: M1</option>
-                <option value="M5">Manual: M5</option>
-                <option value="M15">Manual: M15</option>
+                <option value="M1">Manual: M1 (Scalp Rápido)</option>
+                <option value="M5">Manual: M5 (Padrão)</option>
+                <option value="M15">Manual: M15 (Estrutura)</option>
               </select>
             </div>
 
+            {/* ALVO R:R */}
             <div>
-              <label className="text-slate-400 block mb-1">Relação R:R</label>
+              <label className="text-slate-400 block mb-1">Modo de Alvo (R:R)</label>
               <select
-                value={config.target_rr}
-                onChange={e => updateConfig({ target_rr: parseFloat(e.target.value) })}
+                value={config.rr_mode}
+                onChange={e => updateConfig({ rr_mode: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-white">
-                <option value="1.0">1:1.0</option>
-                <option value="1.5">1:1.5 (Padrão)</option>
-                <option value="2.0">1:2.0</option>
-                <option value="3.0">1:3.0</option>
+                <option value="manual">Manual (Fixo)</option>
+                <option value="ai">IA Adaptativa (Cenário)</option>
               </select>
             </div>
 
+            {/* BREAK-EVEN */}
             <div>
               <label className="text-slate-400 block mb-1">Auto Break-Even</label>
               <button
@@ -357,3 +433,6 @@ export default function App() {
     </div>
   );
 }
+</file>
+
+</files>
